@@ -1,7 +1,6 @@
 import type { ConversationStatus } from "@elevenlabs/react-native";
 import { ElevenLabsProvider, useConversation } from "@elevenlabs/react-native";
 import React, { useState } from "react";
-import { Button } from "@repo/ui/button";
 import {
     Keyboard,
     StyleSheet,
@@ -154,7 +153,6 @@ const ConversationScreen = () => {
     <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
       <View style={styles.container}>
         <Text style={styles.title}>ElevenLabs React Native Example</Text>
-        <Button appName="veogo-rn" />
         <Text style={styles.subtitle}>
           Remember to set the agentId in the code
         </Text>

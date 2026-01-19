@@ -8,6 +8,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
+      "node": "22.11.0",
       "env": {
         "ENV": "development"
       }
@@ -19,13 +20,15 @@
         "gradleCommand": ":app:assembleRelease"
       },
       "channel": "preview",
+      "node": "22.11.0",
       "env": {
-        "ENV": "preview",
+        "ENV": "preview"
       }
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
+      "node": "22.11.0",
       "env": {
         "ENV": "production"
       },
