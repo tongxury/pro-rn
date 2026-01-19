@@ -1,7 +1,6 @@
 {
   "name": "pro-rn",
   "private": true,
-
   "devDependencies": {
     "prettier": "^3.7.4",
     "turbo": "^2.7.5",
