@@ -1,8 +1,8 @@
 import React from "react";
-import HomeScreen from "../home";
+import ConversationScreen from "../conversation";
 
 const Screen = () => {
-    return  <HomeScreen />
+    return  <ConversationScreen />
 }
 
 export default Screen;

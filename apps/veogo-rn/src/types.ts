@@ -131,3 +131,53 @@ export interface StoreVersion {
         fallbackAndroid?: string; // Play Store 网页版链接
     };
 }
+
+// --- Voice Agent Service Types ---
+
+export interface Persona {
+    id: string;
+    name: string;
+    avatar?: string;
+    desc?: string;
+    systemPrompt?: string;
+    voiceId?: string;
+    defaultSceneId?: string;
+    isPublic?: boolean;
+    status?: string;
+}
+
+export interface Voice {
+    id: string;
+    name: string;
+    providerVoiceId: string;
+    sampleUrl?: string;
+    type: 'preset' | 'cloned';
+    settings?: Record<string, string>;
+    status?: 'active' | 'processing' | 'failed';
+}
+
+export interface VoiceScene {
+    id: string;
+    name: string;
+    desc?: string;
+    bgUrl?: string;
+    systemPromptOverride?: string;
+}
+
+export interface VoiceSession {
+    id: string;
+    personaId: string;
+    sceneId?: string;
+    status: 'active' | 'closed' | 'error';
+    startedAt: number;
+    endedAt?: number;
+}
+
+export interface VoiceMessage {
+    id: string;
+    sessionId: string;
+    role: 'user' | 'agent';
+    text: string;
+    voiceUrl?: string;
+    createdAt: number;
+}
