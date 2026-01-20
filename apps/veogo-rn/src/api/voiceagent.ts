@@ -19,11 +19,21 @@ export const createAgent = (data: {
     systemPrompt: string, 
     voiceId?: string,
     avatar?: string, 
-    desc?: string 
+    desc?: string,
+    defaultSceneId?: string,
+    isPublic?: boolean,
 }) => {
     return instance.request<Agent>({
         url: "/api/va/agents",
         method: "POST",
+        data,
+    });
+};
+
+export const updateAgent = (id: string, data: Partial<Agent>) => {
+    return instance.request<Agent>({
+        url: `/api/va/agents/${id}`,
+        method: "PATCH",
         data,
     });
 };

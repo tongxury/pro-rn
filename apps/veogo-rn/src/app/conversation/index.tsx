@@ -1,9 +1,9 @@
 import { createConversation, listAgents, listScenes } from "@/api/voiceagent";
+import { useQueryData } from "@/hooks/useQueryData";
 import type { ConversationStatus } from "@elevenlabs/react-native";
 import { ElevenLabsProvider, useConversation } from "@elevenlabs/react-native";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useQuery } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams } from "expo-router";
@@ -23,20 +23,19 @@ import { ConfigModal } from "./components/Settings/ConfigModal";
 const ConversationScreen = () => {
     const params = useLocalSearchParams();
     
-    // 使用 useQuery 并手动解构数据，确保引用稳定
-    const { data: agentsRes } = useQuery({
+    // 使用优化后的 useQueryData，它会自动处理 data.data 路径并保持引用稳定
+    const { data: agentsData } = useQueryData({
         queryKey: ['agents'],
         queryFn: () => listAgents(),
     });
 
-    const { data: scenesRes } = useQuery({
+    const { data: scenesData } = useQueryData({
         queryKey: ['scenes'],
         queryFn: () => listScenes(),
     });
 
-    // 关键：使用 useMemo 且路径指向 .data.data.list
-    const agents = useMemo(() => (agentsRes?.data as any)?.data?.list || [], [(agentsRes?.data as any)?.data?.list]);
-    const scenes = useMemo(() => (scenesRes?.data as any)?.data?.list || [], [(scenesRes?.data as any)?.data?.list]);
+    const agents = useMemo(() => agentsData?.list || [], [agentsData?.list]);
+    const scenes = useMemo(() => scenesData?.list || [], [scenesData?.list]);
 
     const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
     const [activeScene, setActiveScene] = useState<VoiceScene | null>(null);
