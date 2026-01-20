@@ -53,6 +53,14 @@ export const createConversation = (data: { agentId: string, sceneId?: string }) 
     });
 };
 
+export const updateConversation = (id: string, data: { status?: string, conversationId?: string }) => {
+    return instance.request<Conversation>({
+        url: `/api/va/conversations/${id}`,
+        method: "PATCH",
+        data,
+    });
+};
+
 export const listVoices = (params: { owner?: string } = {}) => {
     return instance.request<{ list: Voice[] }>({
         url: "/api/va/voices",
@@ -72,6 +80,20 @@ export const listConversations = (params: { page?: number, size?: number } = {})
     return instance.request<{ list: Conversation[], total: number }>({
         url: "/api/va/conversations",
         params,
+    });
+};
+
+export const listTranscriptEntries = (conversationId: string) => {
+    return instance.request<{ list: TranscriptEntry[] }>({
+        url: `/api/va/conversations/${conversationId}/transcripts`,
+    });
+};
+
+export const recordTranscriptEntry = (data: { conversationId: string, role: string, message: string }) => {
+    return instance.request<TranscriptEntry>({
+        url: "/api/va/transcripts",
+        method: "POST",
+        data,
     });
 };
 

@@ -49,7 +49,7 @@ export const ConfigModal = ({
 
                         {/* Tabs */}
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row mb-8">
-                            {['agent', 'voice', 'scene', 'history'].map((tab) => (
+                            {['agent', 'voice', 'history'].map((tab) => (
                                 <TouchableOpacity 
                                     key={tab}
                                     onPress={() => {

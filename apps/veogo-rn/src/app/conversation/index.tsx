@@ -1,4 +1,4 @@
-import { createConversation, listAgents, listScenes } from "@/api/voiceagent";
+import { createConversation, listAgents, listScenes, recordTranscriptEntry, updateConversation } from "@/api/voiceagent";
 import { useQueryData } from "@/hooks/useQueryData";
 import type { ConversationStatus } from "@elevenlabs/react-native";
 import { ElevenLabsProvider, useConversation } from "@elevenlabs/react-native";
@@ -7,7 +7,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     Text,
     TouchableOpacity,
@@ -41,8 +41,9 @@ const ConversationScreen = () => {
     const [activeScene, setActiveScene] = useState<VoiceScene | null>(null);
     
     const [isStarting, setIsStarting] = useState(false);
+    const localIdRef = useRef<string | null>(null);
+    const [currentConversationId, setCurrentConversationId] = useState<string | null>(null); // ElevenLabs ID
     const [textInput, setTextInput] = useState("");
-    const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
     const [isMicMuted, setIsMicMuted] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
     const [showTextInput, setShowTextInput] = useState(false);
@@ -75,18 +76,39 @@ const ConversationScreen = () => {
 
     const conversation = useConversation({
         onConnect: ({ conversationId }: { conversationId: string }) => {
+            if (__DEV__) console.log(">>> [Conversation] Connected:", conversationId);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setCurrentConversationId(conversationId);
+            setIsStarting(false);
+            
+            // 串联逻辑：将 ElevenLabs 的会话 ID 同步到本地数据库记录中
+            if (localIdRef.current) {
+                updateConversation(localIdRef.current, { conversationId });
+            }
         },
         onDisconnect: () => {
+            if (__DEV__) console.log(">>> [Conversation] Disconnected");
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             setCurrentConversationId(null);
+            localIdRef.current = null;
+            setIsStarting(false);
         },
         onMessage: ({ message, role }) => {
             if (role === "agent") setLastMessage(message);
+            
+            // 串联逻辑：将对话过程中的消息实时记录到本地数据库
+            if (localIdRef.current) {
+                recordTranscriptEntry({
+                    conversationId: localIdRef.current,
+                    role: role,
+                    message: message
+                });
+            }
         },
         onStatusChange: ({ status }: { status: ConversationStatus }) => {
+            if (__DEV__) console.log(">>> [Conversation] Status changed:", status);
             if (status === "connected") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (status === "disconnected") setIsStarting(false);
         },
         onInterruption: () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -94,22 +116,46 @@ const ConversationScreen = () => {
     });
 
     const handleStart = useCallback(async () => {
-        if (!activeAgent) return;
+        if (__DEV__) console.log(">>> [Conversation] Starting flow...", { activeAgent: activeAgent?.name, activeScene: activeScene?.name });
+        
+        if (!activeAgent) {
+            if (__DEV__) console.error(">>> [Conversation] No active agent selected!");
+            return;
+        }
+
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         setIsStarting(true);
         try {
+            // 1. 在本地数据库创建通话记录
             const res = await createConversation({
                 agentId: activeAgent._id,
                 sceneId: activeScene?._id
             });
-            const { signedUrl } = (res as any).data;
-            if (signedUrl) {
-                await conversation.startSession({ signedUrl });
+            
+            if (__DEV__) console.log(">>> [Conversation] API Response:", res.data);
+
+            // 修正路径：Axios 返回 res.data，业务数据在 .data 中
+            const payload = (res.data as any)?.data;
+            const { _id, signedUrl, token } = payload || {};
+            
+            if (_id) {
+                localIdRef.current = _id;
+            }
+
+            if (token) {
+                const config = { conversationToken: token };
+                if (__DEV__) console.log(">>> [Conversation] Starting session with config:", config);
+                
+                // 2. 启动 ElevenLabs 会话
+                await (conversation as any).startSession(config);
+                
+                if (__DEV__) console.log(">>> [Conversation] startSession called");
+            } else {
+                throw new Error("No signedUrl or token returned from backend");
             }
         } catch (error) {
-            console.error("Failed to start conversation:", error);
+            console.error(">>> [Conversation] Failed to start conversation:", error);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        } finally {
             setIsStarting(false);
         }
     }, [conversation, activeAgent, activeScene]);
@@ -132,11 +178,12 @@ const ConversationScreen = () => {
                     <Text className="text-white text-lg font-black mt-1">{activeAgent?.name || "Select Agent"}</Text>
                 </View>
                 <TouchableOpacity 
+                    disabled={conversation.status === "connected" || isStarting}
                     onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                         setShowConfig(true);
                     }}
-                    className="h-12 w-12 items-center justify-center rounded-2xl bg-white/5 border border-white/10"
+                    className={`h-12 w-12 items-center justify-center rounded-2xl bg-white/5 border border-white/10 ${(conversation.status === "connected" || isStarting) ? 'opacity-20' : 'opacity-100'}`}
                 >
                     <Feather name="settings" size={22} color="white" />
                 </TouchableOpacity>
@@ -180,7 +227,13 @@ const ConversationScreen = () => {
                             <Ionicons name={isMicMuted ? "mic-off" : "mic"} size={28} color={isMicMuted ? "#EF4444" : "white"} />
                         </TouchableOpacity>
                         <TouchableOpacity
-                            onPress={() => conversation.endSession()}
+                            onPress={async () => {
+                                try {
+                                    await conversation.endSession();
+                                } finally {
+                                    setIsStarting(false);
+                                }
+                            }}
                             className="h-20 w-20 items-center justify-center rounded-full bg-red-600 border-4 border-black/20"
                         >
                             <Ionicons name="close" size={40} color="white" />
