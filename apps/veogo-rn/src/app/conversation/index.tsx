@@ -1,169 +1,77 @@
+import { createConversation, listAgents, listScenes } from "@/api/voiceagent";
+import { useQueryData } from "@/hooks/useQueryData";
 import type { ConversationStatus } from "@elevenlabs/react-native";
 import { ElevenLabsProvider, useConversation } from "@elevenlabs/react-native";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    FlatList,
-    Image,
-    Keyboard,
-    Modal,
-    ScrollView,
     Text,
-    TextInput,
     TouchableOpacity,
-    View,
+    View
 } from "react-native";
-import Animated, {
-    interpolate,
-    useAnimatedStyle,
-    useSharedValue,
-    withRepeat,
-    withSequence,
-    withSpring,
-    withTiming
-} from "react-native-reanimated";
-import { Persona, Voice, VoiceScene, VoiceSession } from "../../types";
-
-// --- Sub-components inspired by ElevenLabs UI ---
-
-const Orb = ({ isActive, isSpeaking }: { isActive: boolean, isSpeaking: boolean }) => {
-    const pulse = useSharedValue(0);
-
-    useEffect(() => {
-        if (isActive) {
-            pulse.value = withRepeat(
-                withTiming(1, { duration: isSpeaking ? 800 : 2000 }),
-                -1,
-                true
-            );
-        } else {
-            pulse.value = 0;
-        }
-    }, [isActive, isSpeaking]);
-
-    const orbStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: interpolate(pulse.value, [0, 1], [1, 1.15]) }],
-        opacity: interpolate(pulse.value, [0, 1], [0.6, 0.9]),
-    }));
-
-    const glowStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: interpolate(pulse.value, [0, 1], [1, 1.4]) }],
-        opacity: interpolate(pulse.value, [0, 1], [0.1, 0.3]),
-    }));
-
-    return (
-        <View className="items-center justify-center">
-            <Animated.View 
-                style={glowStyle}
-                className="absolute h-64 w-64 rounded-full bg-blue-500/30 blur-3xl"
-            />
-            <Animated.View 
-                style={orbStyle}
-                className="h-48 w-48 rounded-full border border-white/20 bg-black overflow-hidden shadow-2xl items-center justify-center"
-            >
-                <LinearGradient
-                    colors={isActive ? ['#3b82f6', '#8b5cf6', '#d946ef'] : ['#1f2937', '#111827']}
-                    className="absolute inset-0 opacity-40"
-                />
-                <MaterialCommunityIcons 
-                    name={isSpeaking ? "waveform" : "microphone"} 
-                    size={64} 
-                    color="white" 
-                />
-            </Animated.View>
-        </View>
-    );
-};
-
-const BarVisualizer = ({ isActive }: { isActive: boolean }) => {
-    return (
-        <View className="flex-row items-end justify-center h-12 space-x-1">
-            {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-                <Bar key={i} index={i} isActive={isActive} />
-            ))}
-        </View>
-    );
-};
-
-const Bar = ({ index, isActive }: { index: number, isActive: boolean }) => {
-    const height = useSharedValue(4);
-
-    useEffect(() => {
-        if (isActive) {
-            height.value = withRepeat(
-                withTiming(Math.random() * 40 + 10, { duration: Math.random() * 300 + 200 }),
-                -1,
-                true
-            );
-        } else {
-            height.value = withTiming(4);
-        }
-    }, [isActive]);
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        height: height.value,
-    }));
-
-    return (
-        <Animated.View 
-            style={animatedStyle}
-            className="w-1.5 rounded-full bg-blue-400/60"
-        />
-    );
-};
-
-const ShimmeringText = ({ text, active }: { text: string, active: boolean }) => {
-    const shimmer = useSharedValue(0);
-
-    useEffect(() => {
-        if (active) {
-            shimmer.value = withRepeat(
-                withTiming(1, { duration: 1500 }),
-                -1,
-                false
-            );
-        }
-    }, [active]);
-
-    const textStyle = useAnimatedStyle(() => ({
-        opacity: active ? interpolate(shimmer.value, [0, 0.5, 1], [0.4, 1, 0.4]) : 0.4,
-    }));
-
-    return (
-        <Animated.Text style={textStyle} className="text-white text-[10px] font-black uppercase tracking-[4px]">
-            {text}
-        </Animated.Text>
-    );
-};
+import { Agent, VoiceScene } from "../../types";
+import { BarVisualizer } from "./components/BarVisualizer";
+import { ConfigModal } from "./components/ConfigModal";
+import { MessageModal } from "./components/MessageModal";
+import { Orb } from "./components/Orb";
+import { ShimmeringText } from "./components/ShimmeringText";
 
 const ConversationScreen = () => {
     const params = useLocalSearchParams();
     
-    // API State
-    const [personas, setPersonas] = useState<Persona[]>([
-        { id: "1", name: "Lumina AI", desc: "Your creative companion.", avatar: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=500" },
-        { id: "2", name: "Atlas", desc: "Data and logic expert.", avatar: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=500" }
-    ]);
-    const [activePersona, setActivePersona] = useState<Persona>(personas[0]);
-    const [scenes, setScenes] = useState<VoiceScene[]>([
-        { id: "1", name: "Neon Studio", desc: "Vibrant and energetic" },
-        { id: "2", name: "Zen Garden", desc: "Peaceful and quiet" }
-    ]);
-    const [activeScene, setActiveScene] = useState<VoiceScene>(scenes[0]);
+    // Data fetching (shared for initialization)
+    const { data: agentsData } = useQueryData<any>({
+        queryKey: ['agents'],
+        queryFn: () => listAgents(),
+    });
+
+    const { data: scenesData } = useQueryData<any>({
+        queryKey: ['scenes'],
+        queryFn: () => listScenes(),
+    });
+
+    const agents = (agentsData?.list || []) as Agent[];
+    const scenes = (scenesData?.list || []) as VoiceScene[];
+
+    const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
+    const [activeScene, setActiveScene] = useState<VoiceScene | null>(null);
     
     // UI State
     const [isStarting, setIsStarting] = useState(false);
     const [textInput, setTextInput] = useState("");
     const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
     const [isMicMuted, setIsMicMuted] = useState(false);
-    const [activeTab, setActiveTab] = useState<'persona' | 'voice' | 'scene' | 'history'>('persona');
     const [showConfig, setShowConfig] = useState(false);
     const [showTextInput, setShowTextInput] = useState(false);
     const [lastMessage, setLastMessage] = useState<string | null>(null);
+
+    // Initial Data Fetching
+    useEffect(() => {
+        const init = async () => {
+            if (agents.length > 0 && !activeAgent) {
+                const savedId = await AsyncStorage.getItem("last_agent_id");
+                const targetId = (params.agentId as string) || savedId;
+                
+                const initialAgent = targetId 
+                    ? agents.find((p: Agent) => p._id === targetId) || agents[0]
+                    : agents[0];
+                
+                setActiveAgent(initialAgent);
+                if (initialAgent?._id) {
+                    await AsyncStorage.setItem("last_agent_id", initialAgent._id);
+                }
+            }
+            
+            if (scenes.length > 0 && !activeScene) {
+                setActiveScene(scenes[0]);
+            }
+        };
+        init();
+    }, [agents, scenes, params.agentId]);
 
     const conversation = useConversation({
         onConnect: ({ conversationId }: { conversationId: string }) => {
@@ -186,19 +94,32 @@ const ConversationScreen = () => {
     });
 
     const handleStart = useCallback(async () => {
+        if (!activeAgent) return;
+        
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         setIsStarting(true);
         try {
-            await conversation.startSession({
-                agentId: 'agent_5301kf9mt9hhfb6tpbezkx6m66pa',
-                userId: "demo-user",
+            const res = await createConversation({
+                agentId: activeAgent._id,
+                sceneId: activeScene?._id
             });
+            
+            const { signedUrl } = (res as any).data;
+            
+            if (signedUrl) {
+                await conversation.startSession({
+                    signedUrl: signedUrl
+                });
+            } else {
+                throw new Error("No signed URL returned from backend");
+            }
         } catch (error) {
-            console.error(error);
+            console.error("Failed to start conversation:", error);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         } finally {
             setIsStarting(false);
         }
-    }, [conversation]);
+    }, [conversation, activeAgent, activeScene]);
 
     const toggleMute = useCallback(() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -207,57 +128,18 @@ const ConversationScreen = () => {
         conversation.setMicMuted(next);
     }, [isMicMuted, conversation]);
 
-    const renderPersonaItem = ({ item }: { item: Persona }) => (
-        <TouchableOpacity 
-            onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setActivePersona(item);
-            }}
-            className={`mb-3 p-4 rounded-3xl flex-row items-center border ${activePersona.id === item.id ? 'bg-white border-white' : 'bg-white/5 border-white/10'}`}
-        >
-            <Image source={{ uri: item.avatar }} className="h-12 w-12 rounded-2xl" />
-            <View className="ml-4 flex-1">
-                <Text className={`font-bold ${activePersona.id === item.id ? 'text-black' : 'text-white'}`}>{item.name}</Text>
-                <Text className={`text-xs ${activePersona.id === item.id ? 'text-black/60' : 'text-white/40'}`} numberOfLines={1}>{item.desc}</Text>
-            </View>
-            {activePersona.id === item.id && <Feather name="check-circle" size={20} color="black" />}
-        </TouchableOpacity>
-    );
-
-    const renderSceneItem = ({ item }: { item: VoiceScene }) => (
-        <TouchableOpacity 
-            onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setActiveScene(item);
-            }}
-            className={`mb-3 p-5 rounded-3xl border ${activeScene.id === item.id ? 'bg-indigo-600 border-indigo-500' : 'bg-white/5 border-white/10'}`}
-        >
-            <Text className="text-white font-bold text-lg">{item.name}</Text>
-            <Text className="text-white/50 text-xs mt-1">{item.desc}</Text>
-        </TouchableOpacity>
-    );
-
     return (
         <View className="flex-1 bg-[#050505]">
-            <LinearGradient
-                colors={['#0f172a', '#050505', '#1e1b4b']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                className="absolute inset-0"
-            />
 
             {/* Top Navigation */}
             <View className="flex-row items-center justify-between px-6 pt-16 pb-4 z-10">
-                <TouchableOpacity onPress={() => router.back()} className="h-12 w-12 items-center justify-center rounded-2xl bg-white/5 border border-white/10">
-                    <Feather name="chevron-left" size={24} color="white" />
-                </TouchableOpacity>
-                
+             
                 <View className="items-center">
                     <ShimmeringText 
                         text={conversation.status === "connected" ? (conversation.isSpeaking ? "Speaking" : "Listening") : "Voice Agent"} 
                         active={conversation.status === "connected"} 
                     />
-                    <Text className="text-white text-lg font-black mt-1">{activePersona.name}</Text>
+                    <Text className="text-white text-lg font-black mt-1">{activeAgent?.name || "Select Agent"}</Text>
                 </View>
 
                 <TouchableOpacity 
@@ -283,15 +165,16 @@ const ConversationScreen = () => {
                         <BarVisualizer isActive={conversation.isSpeaking} />
                     </View>
 
-                    {/* Subtitle/Captions - Inspired by Transcript Viewer */}
                     <View className="mt-12 px-12 h-28 items-center justify-center">
                         <Text className="text-white/90 text-center text-xl leading-relaxed font-medium tracking-tight">
-                            {conversation.status === "connected" ? (lastMessage || `Hello, I am ${activePersona.name}. How can I help?`) : `Tap below to start session`}
+                            {conversation.status === "connected" ? (lastMessage || `Hello, I am ${activeAgent?.name || "Agent"}. How can I help?`) : `Tap below to start conversation`}
                         </Text>
-                        <View className="mt-4 flex-row items-center space-x-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
-                            <View className="h-1.5 w-1.5 rounded-full bg-blue-400" />
-                            <Text className="text-white/40 text-[10px] font-bold uppercase tracking-wider">{activeScene.name}</Text>
-                        </View>
+                        {activeScene && (
+                            <View className="mt-4 flex-row items-center space-x-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
+                                <View className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                                <Text className="text-white/40 text-[10px] font-bold uppercase tracking-wider">{activeScene.name}</Text>
+                            </View>
+                        )}
                     </View>
                 </View>
             </View>
@@ -306,7 +189,7 @@ const ConversationScreen = () => {
                     >
                         <MaterialCommunityIcons name="power" size={26} color="black" />
                         <Text className="text-black font-black text-xl tracking-tighter">
-                            {isStarting ? "CONNECTING..." : "START SESSION"}
+                            {isStarting ? "CONNECTING..." : "START CONVERSATION"}
                         </Text>
                     </TouchableOpacity>
                 ) : (
@@ -335,119 +218,22 @@ const ConversationScreen = () => {
                 )}
             </View>
 
-            {/* Configuration Overlay (Persona/Voice/Scene/History) */}
-            <Modal visible={showConfig} transparent animationType="slide">
-                <View className="flex-1 justify-end">
-                    <TouchableOpacity className="flex-1" onPress={() => setShowConfig(false)} />
-                    <BlurView intensity={95} tint="dark" className="h-[75%] rounded-t-[50px] bg-black/40 border-t border-white/10 overflow-hidden">
-                        <View className="p-8 pb-0">
-                            <View className="flex-row items-center justify-between mb-8">
-                                <Text className="text-3xl font-black text-white">Agent Settings</Text>
-                                <TouchableOpacity onPress={() => setShowConfig(false)} className="h-10 w-10 bg-white/10 rounded-full items-center justify-center">
-                                    <Ionicons name="close" size={24} color="white" />
-                                </TouchableOpacity>
-                            </View>
+            <ConfigModal 
+                visible={showConfig} 
+                onClose={() => setShowConfig(false)} 
+                activeAgent={activeAgent}
+                setActiveAgent={setActiveAgent}
+                activeScene={activeScene}
+                setActiveScene={setActiveScene}
+            />
 
-                            {/* Tabs */}
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row mb-8">
-                                {['persona', 'voice', 'scene', 'history'].map((tab) => (
-                                    <TouchableOpacity 
-                                        key={tab}
-                                        onPress={() => {
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            setActiveTab(tab as any);
-                                        }}
-                                        className={`mr-4 px-6 py-3 rounded-full border ${activeTab === tab ? 'bg-white border-white' : 'bg-white/5 border-white/10'}`}
-                                    >
-                                        <Text className={`font-bold capitalize ${activeTab === tab ? 'text-black' : 'text-white/60'}`}>{tab}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </ScrollView>
-                        </View>
-
-                        <View className="flex-1 px-8">
-                            {activeTab === 'persona' && (
-                                <View className="flex-1">
-                                    <FlatList
-                                        data={personas}
-                                        keyExtractor={item => item.id}
-                                        renderItem={renderPersonaItem}
-                                        ListHeaderComponent={<Text className="text-white/40 text-xs font-bold uppercase mb-4 tracking-widest">Select Persona</Text>}
-                                        ListFooterComponent={
-                                            <TouchableOpacity className="mt-2 py-6 border border-dashed border-white/20 rounded-3xl items-center flex-row justify-center space-x-2">
-                                                <Feather name="plus" size={20} color="white" className="opacity-40" />
-                                                <Text className="text-white/40 font-bold">Create New Persona</Text>
-                                            </TouchableOpacity>
-                                        }
-                                    />
-                                </View>
-                            )}
-                            {activeTab === 'scene' && (
-                                <View className="flex-1">
-                                    <FlatList
-                                        data={scenes}
-                                        keyExtractor={item => item.id}
-                                        renderItem={renderSceneItem}
-                                        ListHeaderComponent={<Text className="text-white/40 text-xs font-bold uppercase mb-4 tracking-widest">Select Atmosphere</Text>}
-                                    />
-                                </View>
-                            )}
-                            {activeTab === 'voice' && (
-                                <View className="flex-1 items-center justify-center pb-20">
-                                    <MaterialCommunityIcons name="microphone-settings" size={64} color="rgba(255,255,255,0.1)" />
-                                    <Text className="text-white/40 font-medium text-center mt-4">Voice cloning and fine-tuning{"\n"}options available in Pro mode.</Text>
-                                    <TouchableOpacity className="mt-8 bg-indigo-600 px-8 py-4 rounded-2xl">
-                                        <Text className="text-white font-bold">Add Custom Voice</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            )}
-                            {activeTab === 'history' && (
-                                <View className="flex-1 items-center justify-center pb-20">
-                                    <Feather name="clock" size={64} color="rgba(255,255,255,0.1)" />
-                                    <Text className="text-white/40 font-medium text-center mt-4">No recent sessions found.</Text>
-                                </View>
-                            )}
-                        </View>
-                    </BlurView>
-                </View>
-            </Modal>
-
-            {/* Text Message Modal */}
-            <Modal visible={showTextInput} transparent animationType="fade">
-                <BlurView intensity={80} tint="dark" className="flex-1 justify-end px-6 pb-12">
-                    <TouchableOpacity className="flex-1" onPress={() => setShowTextInput(false)} />
-                    <View className="bg-[#111] rounded-[45px] p-8 border border-white/10 shadow-2xl">
-                        <View className="flex-row justify-between items-center mb-6">
-                            <Text className="text-2xl font-black text-white">Send Message</Text>
-                            <TouchableOpacity onPress={() => setShowTextInput(false)} className="h-10 w-10 bg-white/10 rounded-full items-center justify-center">
-                                <Ionicons name="close" size={24} color="white" />
-                            </TouchableOpacity>
-                        </View>
-                        <TextInput
-                            autoFocus
-                            multiline
-                            className="bg-white/5 rounded-3xl p-6 text-white text-lg min-h-[150px] border border-white/5"
-                            placeholder="Type a message or provide context..."
-                            placeholderTextColor="rgba(255,255,255,0.2)"
-                            value={textInput}
-                            onChangeText={setTextInput}
-                            selectionColor="white"
-                        />
-                        <TouchableOpacity
-                            onPress={() => {
-                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                                conversation.sendUserMessage(textInput);
-                                setTextInput("");
-                                setShowTextInput(false);
-                            }}
-                            disabled={!textInput.trim()}
-                            className={`mt-6 py-5 rounded-[25px] items-center ${textInput.trim() ? 'bg-white' : 'bg-white/20'}`}
-                        >
-                            <Text className={`font-black text-lg ${textInput.trim() ? 'text-black' : 'text-white/40'}`}>SEND SIGNAL</Text>
-                        </TouchableOpacity>
-                    </View>
-                </BlurView>
-            </Modal>
+            <MessageModal 
+                visible={showTextInput}
+                onClose={() => setShowTextInput(false)}
+                textInput={textInput}
+                setTextInput={setTextInput}
+                onSendMessage={(text) => conversation.sendUserMessage(text)}
+            />
         </View>
     );
 };

@@ -1,5 +1,3 @@
-import {ReactNode} from "react";
-
 export interface Settings {
     scenes: Scene[];
 
@@ -101,22 +99,6 @@ export interface VipResponse {
         preAnalysis: number;
         duplicateScript: number;
     };
-    // id: 'l1-month',
-    // title: '1个月',
-    // amount: 38,
-    // months: 1,
-    // creditPerMonth: 500,
-    // unit: "单月",
-    // features: {
-    //     coverAnalysisImages: 16,
-    //     analysisImages: 25,
-    //     preAnalysisImages: 25,
-    //     limitAnalysisImages: 25,
-    //     analysis: 12,
-    //     limitAnalysis: 12,
-    //     preAnalysis: 6,
-    //     duplicateScript: 6
-    // }
 }
 
 // 更新接口
@@ -134,8 +116,8 @@ export interface StoreVersion {
 
 // --- Voice Agent Service Types ---
 
-export interface Persona {
-    id: string;
+export interface Agent {
+    _id: string;
     name: string;
     avatar?: string;
     desc?: string;
@@ -144,12 +126,13 @@ export interface Persona {
     defaultSceneId?: string;
     isPublic?: boolean;
     status?: string;
+    agentId?: string;
 }
 
 export interface Voice {
-    id: string;
+    _id: string;
     name: string;
-    providerVoiceId: string;
+    voiceId: string;
     sampleUrl?: string;
     type: 'preset' | 'cloned';
     settings?: Record<string, string>;
@@ -157,27 +140,30 @@ export interface Voice {
 }
 
 export interface VoiceScene {
-    id: string;
+    _id: string;
     name: string;
     desc?: string;
     bgUrl?: string;
     systemPromptOverride?: string;
 }
 
-export interface VoiceSession {
-    id: string;
-    personaId: string;
+export interface Conversation {
+    _id: string;
+    agentId: string;
     sceneId?: string;
     status: 'active' | 'closed' | 'error';
     startedAt: number;
     endedAt?: number;
+    signedUrl?: string;
+    conversationId?: string;
 }
 
-export interface VoiceMessage {
-    id: string;
-    sessionId: string;
+export interface TranscriptEntry {
+    _id: string;
+    conversationId: string;
     role: 'user' | 'agent';
-    text: string;
+    message: string;
     voiceUrl?: string;
     createdAt: number;
+    messageId?: string;
 }
