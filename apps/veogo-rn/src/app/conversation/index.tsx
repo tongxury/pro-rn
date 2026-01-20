@@ -1,41 +1,42 @@
 import { createConversation, listAgents, listScenes } from "@/api/voiceagent";
-import { useQueryData } from "@/hooks/useQueryData";
 import type { ConversationStatus } from "@elevenlabs/react-native";
 import { ElevenLabsProvider, useConversation } from "@elevenlabs/react-native";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useQuery } from "@tanstack/react-query";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Text,
     TouchableOpacity,
     View
 } from "react-native";
 import { Agent, VoiceScene } from "../../types";
-import { BarVisualizer } from "./components/BarVisualizer";
-import { ConfigModal } from "./components/ConfigModal";
-import { MessageModal } from "./components/MessageModal";
-import { Orb } from "./components/Orb";
-import { ShimmeringText } from "./components/ShimmeringText";
+import { BarVisualizer } from "./components/LiveCall/BarVisualizer";
+import { Orb } from "./components/LiveCall/Orb";
+import { ShimmeringText } from "./components/LiveCall/ShimmeringText";
+import { MessageModal } from "./components/Messaging/MessageModal";
+import { ConfigModal } from "./components/Settings/ConfigModal";
 
 const ConversationScreen = () => {
     const params = useLocalSearchParams();
     
-    // Data fetching (shared for initialization)
-    const { data: agentsData } = useQueryData<any>({
+    // 1. Use useQuery directly for stability
+    const { data: agentsRes } = useQuery({
         queryKey: ['agents'],
         queryFn: () => listAgents(),
     });
 
-    const { data: scenesData } = useQueryData<any>({
+    const { data: scenesRes } = useQuery({
         queryKey: ['scenes'],
         queryFn: () => listScenes(),
     });
 
-    const agents = (agentsData?.list || []) as Agent[];
-    const scenes = (scenesData?.list || []) as VoiceScene[];
+    // 2. memoize lists to ensure reference stability
+    const agents = useMemo(() => (agentsRes?.data as any)?.data?.list || [], [(agentsRes?.data as any)?.data?.list]);
+    const scenes = useMemo(() => (scenesRes?.data as any)?.data?.list || [], [(scenesRes?.data as any)?.data?.list]);
 
     const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
     const [activeScene, setActiveScene] = useState<VoiceScene | null>(null);
@@ -49,10 +50,10 @@ const ConversationScreen = () => {
     const [showTextInput, setShowTextInput] = useState(false);
     const [lastMessage, setLastMessage] = useState<string | null>(null);
 
-    // Initial Data Fetching
+    // 3. Robust initialization
     useEffect(() => {
+        if (agents.length > 0 && !activeAgent) {
         const init = async () => {
-            if (agents.length > 0 && !activeAgent) {
                 const savedId = await AsyncStorage.getItem("last_agent_id");
                 const targetId = (params.agentId as string) || savedId;
                 
@@ -60,18 +61,20 @@ const ConversationScreen = () => {
                     ? agents.find((p: Agent) => p._id === targetId) || agents[0]
                     : agents[0];
                 
-                setActiveAgent(initialAgent);
+                    setActiveAgent(initialAgent);
                 if (initialAgent?._id) {
                     await AsyncStorage.setItem("last_agent_id", initialAgent._id);
-                }
-            }
-            
-            if (scenes.length > 0 && !activeScene) {
-                setActiveScene(scenes[0]);
             }
         };
         init();
-    }, [agents, scenes, params.agentId]);
+        }
+    }, [agents, params.agentId]);
+
+    useEffect(() => {
+        if (scenes.length > 0 && !activeScene) {
+            setActiveScene(scenes[0]);
+        }
+    }, [scenes]);
 
     const conversation = useConversation({
         onConnect: ({ conversationId }: { conversationId: string }) => {
@@ -133,7 +136,7 @@ const ConversationScreen = () => {
 
             {/* Top Navigation */}
             <View className="flex-row items-center justify-between px-6 pt-16 pb-4 z-10">
-             
+                
                 <View className="items-center">
                     <ShimmeringText 
                         text={conversation.status === "connected" ? (conversation.isSpeaking ? "Speaking" : "Listening") : "Voice Agent"} 
@@ -166,9 +169,7 @@ const ConversationScreen = () => {
                     </View>
 
                     <View className="mt-12 px-12 h-28 items-center justify-center">
-                        <Text className="text-white/90 text-center text-xl leading-relaxed font-medium tracking-tight">
-                            {conversation.status === "connected" ? (lastMessage || `Hello, I am ${activeAgent?.name || "Agent"}. How can I help?`) : `Tap below to start conversation`}
-                        </Text>
+                       
                         {activeScene && (
                             <View className="mt-4 flex-row items-center space-x-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
                                 <View className="h-1.5 w-1.5 rounded-full bg-blue-400" />
@@ -185,7 +186,7 @@ const ConversationScreen = () => {
                     <TouchableOpacity
                         activeOpacity={0.9}
                         onPress={handleStart}
-                        className="bg-white h-20 rounded-[35px] flex-row items-center justify-center space-x-3 shadow-2xl"
+                        className="h-20 rounded-[35px] flex-row items-center justify-center space-x-3 shadow-2xl"
                     >
                         <MaterialCommunityIcons name="power" size={26} color="black" />
                         <Text className="text-black font-black text-xl tracking-tighter">

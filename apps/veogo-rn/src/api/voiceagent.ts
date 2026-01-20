@@ -14,6 +14,20 @@ export const getAgent = (id: string) => {
     });
 };
 
+export const createAgent = (data: { 
+    name: string, 
+    systemPrompt: string, 
+    voiceId?: string,
+    avatar?: string, 
+    desc?: string 
+}) => {
+    return instance.request<Agent>({
+        url: "/api/va/agents",
+        method: "POST",
+        data,
+    });
+};
+
 export const listScenes = (params: {} = {}) => {
     return instance.request<{ list: VoiceScene[] }>({
         url: "/api/va/scenes",
@@ -29,9 +43,18 @@ export const createConversation = (data: { agentId: string, sceneId?: string }) 
     });
 };
 
-export const listVoices = () => {
+export const listVoices = (params: { owner?: string } = {}) => {
     return instance.request<{ list: Voice[] }>({
         url: "/api/va/voices",
+        params,
+    });
+};
+
+export const addVoice = (data: { name: string, sampleUrl: string, type?: string }) => {
+    return instance.request<Voice>({
+        url: "/api/va/voices",
+        method: "POST",
+        data,
     });
 };
 
