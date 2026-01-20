@@ -1,11 +1,10 @@
 import { createAgent, listAgents, listVoices } from "@/api/voiceagent";
-import { useQueryData } from "@/hooks/useQueryData";
-import { Agent, Voice } from "@/types";
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Agent } from "@/types";
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
     ActivityIndicator,
     FlatList,
@@ -33,45 +32,38 @@ export const AgentTab = (props: AgentTabProps) => {
 
     const queryClient = useQueryClient();
 
-    const { data: agentsData } = useQueryData<any>({
+    // 1. 使用 useQuery 直接拉取数据，确保稳定性
+    const { data: agentsRes } = useQuery({
         queryKey: ['agents'],
         queryFn: () => listAgents(),
     });
 
-    const { data: voicesData } = useQueryData<any>({
+    const { data: voicesRes, isLoading: isVoicesLoading } = useQuery({
         queryKey: ['voices', voiceFilter],
         queryFn: () => listVoices({ owner: voiceFilter === 'all' ? '' : voiceFilter }),
     });
 
-    const agentsDataList = agentsData?.list;
-    const agents = Array.isArray(agentsDataList) ? (agentsDataList as Agent[]) : [];
-
-    const voicesDataList = voicesData?.list;
-    const voices = Array.isArray(voicesDataList) ? (voicesDataList as Voice[]) : [];
-
-    const filteredVoices = voices; // Now handled by API
+    // 2. 锁定数据引用，防止主页面 useEffect 被误触发
+    const agents = useMemo(() => (agentsRes?.data as any)?.data?.list || [], [(agentsRes?.data as any)?.data?.list]);
+    const voices = useMemo(() => (voicesRes?.data as any)?.data?.list || [], [(voicesRes?.data as any)?.data?.list]);
 
     const handleCreateAgent = async () => {
-        if (!newName.trim() || !newPrompt.trim()) return;
-        
+        if (!newName.trim() || !newPrompt.trim() || !selectedVoiceId) return;
         setIsSubmitting(true);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
         try {
             await createAgent({
                 name: newName,
                 systemPrompt: newPrompt,
-                voiceId: selectedVoiceId || undefined,
+                voiceId: selectedVoiceId,
                 desc: "Custom AI Agent",
                 avatar: `https://api.dicebear.com/7.x/bottts/png?seed=${newName}`
             });
-            
             await queryClient.invalidateQueries({ queryKey: ['agents'] });
             setNewName("");
             setNewPrompt("");
             setSelectedVoiceId("");
             setIsCreating(false);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (error) {
             console.error("Failed to create agent", error);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -108,7 +100,6 @@ export const AgentTab = (props: AgentTabProps) => {
                     </TouchableOpacity>
                 </View>
                 
-                <Text className="text-white/60 text-xs font-bold uppercase mb-2 ml-1">Basic Info</Text>
                 <TextInput
                     placeholder="Agent Name"
                     placeholderTextColor="rgba(255,255,255,0.2)"
@@ -118,17 +109,17 @@ export const AgentTab = (props: AgentTabProps) => {
                 />
                 
                 <TextInput
-                    placeholder="System Prompt (Define personality & knowledge)"
+                    placeholder="System Prompt"
                     placeholderTextColor="rgba(255,255,255,0.2)"
-                    className="bg-white/5 rounded-2xl p-4 text-white mb-6 border border-white/10 min-h-[120px]"
+                    className="bg-white/5 rounded-2xl p-4 text-white mb-6 border border-white/10 min-h-[100px]"
                     multiline
                     textAlignVertical="top"
                     value={newPrompt}
                     onChangeText={setNewPrompt}
                 />
 
-                <View className="flex-row items-center justify-between mb-4 px-1">
-                    <Text className="text-white/60 text-xs font-bold uppercase">Select Voice</Text>
+                <View className="flex-row items-center justify-between mb-4">
+                    <Text className="text-white/60 text-xs font-bold uppercase">Voice Tone</Text>
                     <View className="flex-row bg-white/5 rounded-lg p-1">
                         {(['all', 'system', 'custom'] as const).map((f) => (
                             <TouchableOpacity 
@@ -145,49 +136,44 @@ export const AgentTab = (props: AgentTabProps) => {
                 </View>
 
                 <View className="mb-8">
-                    {filteredVoices.map((voice) => (
-                        voice && (
-                            <TouchableOpacity 
-                                key={voice._id}
-                                onPress={() => {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                    setSelectedVoiceId(voice.voiceId);
-                                }}
-                                className={`mb-2 p-3 rounded-2xl flex-row items-center border ${selectedVoiceId === voice.voiceId ? 'bg-white/10 border-indigo-500' : 'bg-white/5 border-white/5'}`}
-                            >
-                                <View className="h-8 w-8 bg-indigo-500/20 rounded-full items-center justify-center">
-                                    <MaterialCommunityIcons name="microphone" size={16} color="#818cf8" />
-                                </View>
-                                <View className="ml-3 flex-1">
-                                    <Text className="text-white text-sm font-bold">{voice.name}</Text>
-                                    <Text className="text-white/40 text-[10px] uppercase tracking-tighter">
-                                        {voice.type === 'cloned' ? 'Custom Voice' : 'System Voice'}
-                                    </Text>
-                                    
-                                </View>
-                                {selectedVoiceId === voice.voiceId && (
-                                    <Feather name="check-circle" size={16} color="#818cf8" />
-                                )}
-                            </TouchableOpacity>
-                        )
-                    ))}
-                    {filteredVoices.length === 0 && (
-                        <View className="py-8 items-center justify-center bg-white/5 rounded-2xl border border-dashed border-white/10">
-                            <Text className="text-white/20 text-xs">No voices found in this category</Text>
-                        </View>
+                    {isVoicesLoading ? (
+                        <ActivityIndicator color="#818cf8" />
+                    ) : (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
+                            {voices.map((voice) => (
+                                <TouchableOpacity 
+                                    key={voice._id}
+                                    onPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        setSelectedVoiceId(voice.voiceId);
+                                    }}
+                                    className={`mr-3 p-4 rounded-3xl w-32 items-center border ${selectedVoiceId === voice.voiceId ? 'bg-indigo-600/20 border-indigo-500' : 'bg-white/5 border-white/5'}`}
+                                >
+                                    <View className={`h-10 w-10 rounded-full items-center justify-center mb-2 ${selectedVoiceId === voice.voiceId ? 'bg-indigo-500' : 'bg-white/10'}`}>
+                                        <MaterialCommunityIcons 
+                                            name={(voice.type === 'cloned' ? "account-voice" : "robot-voice") as any} 
+                                            size={20} 
+                                            color="white" 
+                                        />
+                                    </View>
+                                    <Text className="text-white text-xs font-bold text-center" numberOfLines={1}>{voice.name}</Text>
+                                    {selectedVoiceId === voice.voiceId && (
+                                        <View className="absolute top-2 right-2">
+                                            <Ionicons name="checkmark-circle" size={16} color="#818cf8" />
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
                     )}
                 </View>
                 
                 <TouchableOpacity 
                     onPress={handleCreateAgent}
                     disabled={isSubmitting || !newName.trim() || !newPrompt.trim() || !selectedVoiceId}
-                    className={`py-4 rounded-2xl items-center justify-center mb-10 ${isSubmitting || !newName.trim() || !newPrompt.trim() || !selectedVoiceId ? 'bg-white/10' : 'bg-indigo-600 shadow-lg shadow-indigo-600/30'}`}
+                    className={`py-4 rounded-2xl items-center justify-center mb-10 ${isSubmitting || !newName.trim() || !newPrompt.trim() || !selectedVoiceId ? 'bg-white/10' : 'bg-indigo-600'}`}
                 >
-                    {isSubmitting ? (
-                        <ActivityIndicator color="white" />
-                    ) : (
-                        <Text className="text-white font-black uppercase tracking-widest">Initialize Agent</Text>
-                    )}
+                    {isSubmitting ? <ActivityIndicator color="white" /> : <Text className="text-white font-black uppercase">Create Agent</Text>}
                 </TouchableOpacity>
             </ScrollView>
         );

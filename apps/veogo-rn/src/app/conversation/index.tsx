@@ -23,7 +23,7 @@ import { ConfigModal } from "./components/Settings/ConfigModal";
 const ConversationScreen = () => {
     const params = useLocalSearchParams();
     
-    // 1. Use useQuery directly for stability
+    // 使用 useQuery 并手动解构数据，确保引用稳定
     const { data: agentsRes } = useQuery({
         queryKey: ['agents'],
         queryFn: () => listAgents(),
@@ -34,14 +34,13 @@ const ConversationScreen = () => {
         queryFn: () => listScenes(),
     });
 
-    // 2. memoize lists to ensure reference stability
+    // 关键：使用 useMemo 且路径指向 .data.data.list
     const agents = useMemo(() => (agentsRes?.data as any)?.data?.list || [], [(agentsRes?.data as any)?.data?.list]);
     const scenes = useMemo(() => (scenesRes?.data as any)?.data?.list || [], [(scenesRes?.data as any)?.data?.list]);
 
     const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
     const [activeScene, setActiveScene] = useState<VoiceScene | null>(null);
     
-    // UI State
     const [isStarting, setIsStarting] = useState(false);
     const [textInput, setTextInput] = useState("");
     const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -50,10 +49,9 @@ const ConversationScreen = () => {
     const [showTextInput, setShowTextInput] = useState(false);
     const [lastMessage, setLastMessage] = useState<string | null>(null);
 
-    // 3. Robust initialization
     useEffect(() => {
         if (agents.length > 0 && !activeAgent) {
-        const init = async () => {
+            const init = async () => {
                 const savedId = await AsyncStorage.getItem("last_agent_id");
                 const targetId = (params.agentId as string) || savedId;
                 
@@ -61,12 +59,12 @@ const ConversationScreen = () => {
                     ? agents.find((p: Agent) => p._id === targetId) || agents[0]
                     : agents[0];
                 
-                    setActiveAgent(initialAgent);
+                setActiveAgent(initialAgent);
                 if (initialAgent?._id) {
                     await AsyncStorage.setItem("last_agent_id", initialAgent._id);
-            }
-        };
-        init();
+                }
+            };
+            init();
         }
     }, [agents, params.agentId]);
 
@@ -98,7 +96,6 @@ const ConversationScreen = () => {
 
     const handleStart = useCallback(async () => {
         if (!activeAgent) return;
-        
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         setIsStarting(true);
         try {
@@ -106,15 +103,9 @@ const ConversationScreen = () => {
                 agentId: activeAgent._id,
                 sceneId: activeScene?._id
             });
-            
             const { signedUrl } = (res as any).data;
-            
             if (signedUrl) {
-                await conversation.startSession({
-                    signedUrl: signedUrl
-                });
-            } else {
-                throw new Error("No signed URL returned from backend");
+                await conversation.startSession({ signedUrl });
             }
         } catch (error) {
             console.error("Failed to start conversation:", error);
@@ -133,10 +124,7 @@ const ConversationScreen = () => {
 
     return (
         <View className="flex-1 bg-[#050505]">
-
-            {/* Top Navigation */}
             <View className="flex-row items-center justify-between px-6 pt-16 pb-4 z-10">
-                
                 <View className="items-center">
                     <ShimmeringText 
                         text={conversation.status === "connected" ? (conversation.isSpeaking ? "Speaking" : "Listening") : "Voice Agent"} 
@@ -144,7 +132,6 @@ const ConversationScreen = () => {
                     />
                     <Text className="text-white text-lg font-black mt-1">{activeAgent?.name || "Select Agent"}</Text>
                 </View>
-
                 <TouchableOpacity 
                     onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -156,20 +143,13 @@ const ConversationScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            {/* Visualizer Area */}
             <View className="flex-1 items-center justify-center">
                 <View className="items-center justify-center">
-                    <Orb 
-                        isActive={conversation.status === "connected"} 
-                        isSpeaking={conversation.isSpeaking} 
-                    />
-
+                    <Orb isActive={conversation.status === "connected"} isSpeaking={conversation.isSpeaking} />
                     <View className="mt-12 h-12">
                         <BarVisualizer isActive={conversation.isSpeaking} />
                     </View>
-
                     <View className="mt-12 px-12 h-28 items-center justify-center">
-                       
                         {activeScene && (
                             <View className="mt-4 flex-row items-center space-x-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
                                 <View className="h-1.5 w-1.5 rounded-full bg-blue-400" />
@@ -180,13 +160,12 @@ const ConversationScreen = () => {
                 </View>
             </View>
 
-            {/* Bottom Interaction Bar */}
             <View className="px-8 pb-16">
                 {conversation.status === "disconnected" ? (
                     <TouchableOpacity
                         activeOpacity={0.9}
                         onPress={handleStart}
-                        className="h-20 rounded-[35px] flex-row items-center justify-center space-x-3 shadow-2xl"
+                        className="h-20 rounded-[35px] flex-row items-center justify-center space-x-3 shadow-2xl bg-white"
                     >
                         <MaterialCommunityIcons name="power" size={26} color="black" />
                         <Text className="text-black font-black text-xl tracking-tighter">
@@ -201,18 +180,13 @@ const ConversationScreen = () => {
                         >
                             <Ionicons name={isMicMuted ? "mic-off" : "mic"} size={28} color={isMicMuted ? "#EF4444" : "white"} />
                         </TouchableOpacity>
-
                         <TouchableOpacity
                             onPress={() => conversation.endSession()}
-                            className="h-20 w-20 items-center justify-center rounded-full bg-red-600 shadow-2xl shadow-red-600/50 border-4 border-black/20"
+                            className="h-20 w-20 items-center justify-center rounded-full bg-red-600 border-4 border-black/20"
                         >
                             <Ionicons name="close" size={40} color="white" />
                         </TouchableOpacity>
-
-                        <TouchableOpacity 
-                            onPress={() => setShowTextInput(true)}
-                            className="h-16 w-16 items-center justify-center rounded-full bg-white/10 border border-white/5"
-                        >
+                        <TouchableOpacity onPress={() => setShowTextInput(true)} className="h-16 w-16 items-center justify-center rounded-full bg-white/10 border border-white/5">
                             <Ionicons name="chatbubble-ellipses" size={26} color="white" />
                         </TouchableOpacity>
                     </BlurView>

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { 
     Text, 
     TouchableOpacity, 
@@ -6,7 +6,7 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { listScenes } from "@/api/voiceagent";
-import { useQueryData } from "@/hooks/useQueryData";
+import { useQuery } from "@tanstack/react-query";
 import { VoiceScene } from "@/types";
 
 interface SceneTabProps {
@@ -15,12 +15,12 @@ interface SceneTabProps {
 }
 
 export const SceneTab = ({ activeScene, setActiveScene }: SceneTabProps) => {
-    const { data: scenesData } = useQueryData<any>({
+    const { data: scenesRes } = useQuery({
         queryKey: ['scenes'],
         queryFn: () => listScenes(),
     });
 
-    const scenes = (scenesData?.list || []) as VoiceScene[];
+    const scenes = useMemo(() => (scenesRes?.data as any)?.data?.list || [], [(scenesRes?.data as any)?.data?.list]);
 
     const renderSceneItem = ({ item }: { item: VoiceScene }) => (
         <TouchableOpacity 
